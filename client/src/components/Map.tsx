@@ -76,7 +76,7 @@
 
 /// <reference types="@types/google.maps" />
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePersistFn } from "@/hooks/usePersistFn";
 import { cn } from "@/lib/utils";
 
@@ -126,6 +126,8 @@ export function MapView({
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
+  const [tilesLoaded, setTilesLoaded] = useState(false);
+  const fallbackMapUrl = `/api/maps/static?lat=${initialCenter.lat}&lng=${initialCenter.lng}&zoom=${initialZoom}&width=640&height=640`;
 
   const init = usePersistFn(async () => {
     await loadMapScript();
@@ -133,6 +135,7 @@ export function MapView({
       console.error("Map container not found");
       return;
     }
+    setTilesLoaded(false);
     map.current = new window.google.maps.Map(mapContainer.current, {
       zoom: initialZoom,
       center: initialCenter,
@@ -142,6 +145,7 @@ export function MapView({
       streetViewControl: true,
       mapId: "DEMO_MAP_ID",
     });
+    map.current.addListener("tilesloaded", () => setTilesLoaded(true));
     if (onMapReady) {
       onMapReady(map.current);
     }
@@ -152,6 +156,20 @@ export function MapView({
   }, [init]);
 
   return (
-    <div ref={mapContainer} className={cn("w-full h-[500px]", className)} />
+    <div className={cn("relative overflow-hidden bg-slate-800", className)}>
+      {!tilesLoaded && (
+        <div className="absolute inset-0 z-0 grid place-items-center bg-slate-800">
+          <img
+            src={fallbackMapUrl}
+            alt="خريطة احتياطية أثناء التحميل"
+            className="absolute inset-0 h-full w-full object-cover opacity-70"
+          />
+          <div className="relative rounded-full border border-white/20 bg-slate-950/80 px-4 py-2 text-xs text-white shadow-lg backdrop-blur">
+            جارٍ تحميل بلاطات الخريطة…
+          </div>
+        </div>
+      )}
+      <div ref={mapContainer} className="relative z-10 h-full w-full" />
+    </div>
   );
 }
