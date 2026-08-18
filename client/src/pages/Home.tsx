@@ -53,13 +53,15 @@ type SessionSnapshot = {
   roadsVisible?: boolean;
 };
 
-const INITIAL_MAP: MapSnapshot = { lat: 15.073, lng: 43.279, zoom: 14 };
+const DEFAULT_MAP: MapSnapshot = { lat: 0, lng: 0, zoom: 2 };
 const INITIAL_OVERLAY: OverlayTransform = {
-  lat: INITIAL_MAP.lat,
-  lng: INITIAL_MAP.lng,
+  lat: DEFAULT_MAP.lat,
+  lng: DEFAULT_MAP.lng,
   spanLng: 0.02,
   rotation: 0,
 };
+const SESSION_STORAGE_KEY = "map-overlay-studio/session/v2";
+const CALIBRATION_PLACEHOLDER = "MAP_OVERLAY_CALIBRATION_V1\nlat=<latitude>\nlng=<longitude>\nspanLng=<longitude-span>\nrotation=<degrees>\nopacity=<10-100>\nmapZoom=<1-20>\nroadsVisible=<true|false>";
 
 const MODE_LABEL = {
   navigate: "تنقل",
@@ -90,7 +92,7 @@ function loadImage(source: string) {
 
 export default function Home() {
   const [map, setMap] = useState<google.maps.Map | null>(null);
-  const [mapSnapshot, setMapSnapshot] = useState<MapSnapshot>(INITIAL_MAP);
+  const [mapSnapshot, setMapSnapshot] = useState<MapSnapshot>(DEFAULT_MAP);
   const [mapLocked, setMapLocked] = useState(false);
   const [overlayLocked, setOverlayLocked] = useState(false);
   const [overlayImage, setOverlayImage] = useState<string | null>(null);
@@ -129,7 +131,7 @@ export default function Home() {
   }, [syncMapSnapshot]);
 
   useEffect(() => {
-    void get<SessionSnapshot>("map-overlay-studio/session").then(snapshot => {
+    void get<SessionSnapshot>(SESSION_STORAGE_KEY).then(snapshot => {
       if (!snapshot) {
         setIsRestored(true);
         return;
@@ -290,7 +292,7 @@ export default function Home() {
       toast.error("ارفع مخططاً قبل حفظ حالة الإسناد.");
       return;
     }
-    await set("map-overlay-studio/session", { fileName, overlayImage, transform, mapSnapshot, overlayOpacity, roadsVisible });
+    await set(SESSION_STORAGE_KEY, { fileName, overlayImage, transform, mapSnapshot, overlayOpacity, roadsVisible });
     toast.success("حُفظت حالة الإسناد الجغرافي على هذا الجهاز.");
   };
 
@@ -529,7 +531,7 @@ export default function Home() {
               value={calibrationText}
               onChange={event => setCalibrationText(event.target.value)}
               className="min-h-40 resize-y border-white/10 bg-[#06111a] font-mono text-[11px] leading-5 text-slate-200 placeholder:text-slate-600"
-              placeholder={"MAP_OVERLAY_CALIBRATION_V1\nlat=15.064953\nlng=43.290696\nspanLng=0.110119\nrotation=359.64\nopacity=72\nmapZoom=15\nroadsVisible=false"}
+              placeholder={CALIBRATION_PLACEHOLDER}
               aria-label="نص المعايرة"
             />
             <div className="grid grid-cols-2 gap-2">
@@ -558,7 +560,7 @@ export default function Home() {
         </aside>
 
         <section className="relative order-1 min-h-[62vh] overflow-hidden bg-slate-800 lg:order-2 lg:min-h-0" ref={captureRef}>
-          <MapView initialCenter={{ lat: INITIAL_MAP.lat, lng: INITIAL_MAP.lng }} initialZoom={INITIAL_MAP.zoom} className="absolute inset-0 h-full w-full" onMapReady={handleMapReady} />
+          <MapView initialCenter={{ lat: DEFAULT_MAP.lat, lng: DEFAULT_MAP.lng }} initialZoom={DEFAULT_MAP.zoom} className="absolute inset-0 h-full w-full" onMapReady={handleMapReady} />
           <GeoOverlay map={map} imageUrl={overlayImage} transform={transform} locked={overlayLocked || isExporting} opacity={overlayOpacity / 100} onTransformChange={setTransform} />
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-3">

@@ -64,7 +64,7 @@ describe("overlay precision controls", () => {
 
   it("exports and restores a complete calibration snapshot", () => {
     const text = formatCalibrationText({
-      transform: { lat: 15.064953, lng: 43.290696, spanLng: 0.110119, rotation: 359.64 },
+      transform: { lat: 12.345678, lng: 45.678912, spanLng: 0.123456, rotation: 123.45 },
       overlayOpacity: 72,
       mapZoom: 15,
       roadsVisible: false,
@@ -72,7 +72,7 @@ describe("overlay precision controls", () => {
     const parsed = parseCalibrationText(text);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.calibration.transform).toEqual({ lat: 15.064953, lng: 43.290696, spanLng: 0.110119, rotation: 359.64 });
+    expect(parsed.calibration.transform).toEqual({ lat: 12.345678, lng: 45.678912, spanLng: 0.123456, rotation: 123.45 });
     expect(parsed.calibration.overlayOpacity).toBe(72);
     expect(parsed.calibration.mapZoom).toBe(15);
     expect(parsed.calibration.roadsVisible).toBe(false);
@@ -85,16 +85,16 @@ describe("overlay precision controls", () => {
   });
 
   it("applies a pasted calibration across all map and overlay state values", () => {
-    const parsed = parseCalibrationText("lat=15.064953\nlng=43.290696\nspanLng=0.110119\nrotation=359.64\nopacity=72\nmapZoom=15\nroadsVisible=false");
+    const parsed = parseCalibrationText("lat=12.345678\nlng=45.678912\nspanLng=0.123456\nrotation=123.45\nopacity=72\nmapZoom=15\nroadsVisible=false");
     if (!parsed.ok) throw new Error(parsed.message);
     const applied = applyCalibrationSnapshot({
-      mapSnapshot: { lat: 15.073, lng: 43.279, zoom: 14 },
+      mapSnapshot: { lat: 12, lng: 45, zoom: 14 },
       overlayOpacity: 50,
       roadsVisible: true,
     }, parsed.calibration);
     expect(applied).toEqual({
-      transform: { lat: 15.064953, lng: 43.290696, spanLng: 0.110119, rotation: 359.64 },
-      mapSnapshot: { lat: 15.064953, lng: 43.290696, zoom: 15 },
+      transform: { lat: 12.345678, lng: 45.678912, spanLng: 0.123456, rotation: 123.45 },
+      mapSnapshot: { lat: 12.345678, lng: 45.678912, zoom: 15 },
       overlayOpacity: 72,
       roadsVisible: false,
     });
