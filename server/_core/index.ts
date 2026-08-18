@@ -45,6 +45,7 @@ async function serveGoogleStaticMap(req: express.Request, res: express.Response)
     const zoom = typeof req.query.zoom === "string" ? req.query.zoom : "14";
     const width = Math.min(1280, Math.max(320, Number(req.query.width) || 1280));
     const height = Math.min(1280, Math.max(320, Number(req.query.height) || 960));
+    const roads = req.query.roads === "hide" ? "hide" : "show";
     if (!baseUrl || !apiKey || !lat || !lng) {
       res.status(400).type("text/plain").send("Static map parameters are incomplete.");
       return;
@@ -55,8 +56,12 @@ async function serveGoogleStaticMap(req: express.Request, res: express.Response)
     url.searchParams.set("zoom", zoom);
     url.searchParams.set("size", `${width}x${height}`);
     url.searchParams.set("scale", "2");
-    url.searchParams.set("maptype", "hybrid");
+    url.searchParams.set("maptype", roads === "hide" ? "satellite" : "hybrid");
     url.searchParams.set("format", "png");
+    if (roads === "hide") {
+      url.searchParams.append("style", "feature:road|element:all|visibility:off");
+      url.searchParams.append("style", "feature:transit|element:all|visibility:off");
+    }
     const requestOrigin = req.get("origin") || `${req.protocol}://${req.get("host")}`;
     const upstream = await fetch(url, { headers: { Origin: requestOrigin } });
     const bytes = Buffer.from(await upstream.arrayBuffer());

@@ -16,6 +16,8 @@ import {
   Check,
   Crosshair,
   Download,
+  Eye,
+  EyeOff,
   FileUp,
   Focus,
   Layers3,
@@ -26,6 +28,7 @@ import {
   Move,
   RotateCcw,
   RotateCw,
+  Route,
   Save,
   ScanLine,
   Unlock,
@@ -43,6 +46,8 @@ type SessionSnapshot = {
   overlayImage: string;
   transform: OverlayTransform;
   mapSnapshot: MapSnapshot;
+  overlayOpacity?: number;
+  roadsVisible?: boolean;
 };
 
 const INITIAL_MAP: MapSnapshot = { lat: 15.073, lng: 43.279, zoom: 14 };
@@ -89,6 +94,8 @@ export default function Home() {
   const [fileName, setFileName] = useState("");
   const [transform, setTransform] = useState<OverlayTransform>(INITIAL_OVERLAY);
   const [precision, setPrecision] = useState(2);
+  const [overlayOpacity, setOverlayOpacity] = useState(72);
+  const [roadsVisible, setRoadsVisible] = useState(true);
   const [exportBounds, setExportBounds] = useState<ExportBounds | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isRestored, setIsRestored] = useState(false);
@@ -127,6 +134,8 @@ export default function Home() {
       setOverlayImage(snapshot.overlayImage);
       setTransform(snapshot.transform);
       setMapSnapshot(snapshot.mapSnapshot);
+      setOverlayOpacity(snapshot.overlayOpacity ?? 72);
+      setRoadsVisible(snapshot.roadsVisible ?? true);
       setIsRestored(true);
     });
   }, []);
@@ -148,6 +157,11 @@ export default function Home() {
       zoomControl: !mapLocked,
     });
   }, [map, mapLocked]);
+
+  useEffect(() => {
+    if (!map) return;
+    map.setMapTypeId(roadsVisible ? "hybrid" : "satellite");
+  }, [map, roadsVisible]);
 
   const convertPdfToPng = async (file: File) => {
     const pdfjs = await import("pdfjs-dist");
@@ -269,7 +283,7 @@ export default function Home() {
       toast.error("ارفع مخططاً قبل حفظ حالة الإسناد.");
       return;
     }
-    await set("map-overlay-studio/session", { fileName, overlayImage, transform, mapSnapshot });
+    await set("map-overlay-studio/session", { fileName, overlayImage, transform, mapSnapshot, overlayOpacity, roadsVisible });
     toast.success("حُفظت حالة الإسناد الجغرافي على هذا الجهاز.");
   };
 
@@ -287,6 +301,7 @@ export default function Home() {
         staticUrl.searchParams.set("zoom", String(exportPlan.zoom));
         staticUrl.searchParams.set("width", "640");
         staticUrl.searchParams.set("height", "640");
+        staticUrl.searchParams.set("roads", roadsVisible ? "show" : "hide");
         return staticUrl.toString();
       });
       const [mapTiles, planImage] = await Promise.all([Promise.all(staticUrls.map(loadImage)), loadImage(overlayImage)]);
@@ -428,6 +443,12 @@ export default function Home() {
               </Button>
             </div>
 
+            <Button variant="outline" className="w-full border-white/10 bg-white/5 text-slate-100 hover:bg-white/10 hover:text-white" onClick={() => setRoadsVisible(value => !value)}>
+              {roadsVisible ? <EyeOff className="ml-2 h-4 w-4 text-teal-200" /> : <Eye className="ml-2 h-4 w-4 text-teal-200" />}
+              <Route className="ml-2 h-4 w-4" />
+              {roadsVisible ? "إخفاء تخطيط الطرق" : "إظهار تخطيط الطرق"}
+            </Button>
+
             <Button variant="outline" disabled={!overlayImage} className="w-full border-white/10 bg-white/5 text-slate-100 hover:bg-white/10 hover:text-white" onClick={centreOverlay}>
               <Focus className="ml-2 h-4 w-4" />توسيط المخطط فوق الخريطة
             </Button>
@@ -460,7 +481,7 @@ export default function Home() {
 
         <section className="relative order-1 min-h-[62vh] overflow-hidden bg-slate-800 lg:order-2 lg:min-h-0" ref={captureRef}>
           <MapView initialCenter={{ lat: INITIAL_MAP.lat, lng: INITIAL_MAP.lng }} initialZoom={INITIAL_MAP.zoom} className="absolute inset-0 h-full w-full" onMapReady={handleMapReady} />
-          <GeoOverlay map={map} imageUrl={overlayImage} transform={transform} locked={overlayLocked || isExporting} onTransformChange={setTransform} />
+          <GeoOverlay map={map} imageUrl={overlayImage} transform={transform} locked={overlayLocked || isExporting} opacity={overlayOpacity / 100} onTransformChange={setTransform} />
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-3">
             <div className="flex items-center gap-2 rounded-full border border-white/15 bg-[#07131d]/85 px-3 py-2 text-xs text-slate-100 shadow-xl backdrop-blur">
@@ -479,6 +500,14 @@ export default function Home() {
           <Card className="border-white/10 bg-white/[0.04] text-slate-100 shadow-none">
             <CardHeader className="pb-3"><CardTitle className="flex items-center justify-between text-sm"><span>التحكم الدقيق</span><MousePointer2 className="h-4 w-4 text-teal-300" /></CardTitle></CardHeader>
             <CardContent className="space-y-5">
+              <div>
+                <div className="mb-2 flex items-center justify-between text-xs text-slate-400"><Label className="text-xs text-slate-400">شفافية المخطط</Label><span className="font-mono text-teal-200">{overlayOpacity}%</span></div>
+                <Slider value={[overlayOpacity]} onValueChange={value => setOverlayOpacity(value[0] ?? 72)} min={10} max={100} step={1} disabled={!overlayImage} />
+                <p className="mt-2 text-[11px] leading-4 text-slate-500">يبقى التحكم متاحاً أثناء السحب والقفل والضبط الدقيق.</p>
+              </div>
+
+              <div className="h-px bg-white/10" />
+
               <div>
                 <div className="mb-2 flex items-center justify-between text-xs text-slate-400"><Label className="text-xs text-slate-400">سرعة الحساسية</Label><span className="font-mono text-teal-200">{precision}</span></div>
                 <Slider value={[precision]} onValueChange={value => setPrecision(value[0] ?? 2)} min={1} max={10} step={1} disabled={!overlayImage} />

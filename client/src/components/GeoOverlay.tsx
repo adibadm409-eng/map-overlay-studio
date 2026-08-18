@@ -6,6 +6,7 @@ type GeoOverlayProps = {
   imageUrl: string | null;
   transform: OverlayTransform;
   locked: boolean;
+  opacity: number;
   onTransformChange: (next: OverlayTransform) => void;
 };
 
@@ -14,6 +15,7 @@ function createRasterOverlay(
   imageUrl: string,
   transform: OverlayTransform,
   locked: boolean,
+  opacity: number,
   onTransformChange: (next: OverlayTransform) => void,
 ) {
   class RasterOverlay extends google.maps.OverlayView {
@@ -22,17 +24,20 @@ function createRasterOverlay(
     private imageRatio = 1;
     private transform: OverlayTransform;
     private locked: boolean;
+    private opacity: number;
 
     constructor() {
       super();
       this.transform = transform;
       this.locked = locked;
+      this.opacity = opacity;
       this.setMap(map);
     }
 
-    public update(nextTransform: OverlayTransform, nextLocked: boolean) {
+    public update(nextTransform: OverlayTransform, nextLocked: boolean, nextOpacity: number) {
       this.transform = nextTransform;
       this.locked = nextLocked;
+      this.opacity = nextOpacity;
       this.applyLockState();
       this.draw();
     }
@@ -45,6 +50,7 @@ function createRasterOverlay(
       this.root.style.transformOrigin = "center";
       this.root.style.touchAction = "none";
       this.root.style.cursor = "grab";
+      this.root.style.opacity = String(this.opacity);
       this.root.style.filter = "drop-shadow(0 12px 18px rgba(9, 20, 33, 0.28))";
 
       this.image = document.createElement("img");
@@ -92,6 +98,7 @@ function createRasterOverlay(
 
     private applyLockState() {
       if (!this.root) return;
+      this.root.style.opacity = String(this.opacity);
       this.root.style.pointerEvents = this.locked ? "none" : "auto";
       this.root.style.cursor = this.locked ? "default" : "grab";
       this.root.style.outline = this.locked ? "none" : "2px solid rgba(10, 128, 117, 0.72)";
@@ -141,8 +148,8 @@ function createRasterOverlay(
   return new RasterOverlay();
 }
 
-export function GeoOverlay({ map, imageUrl, transform, locked, onTransformChange }: GeoOverlayProps) {
-  const overlayRef = useRef<google.maps.OverlayView & { update?: (nextTransform: OverlayTransform, nextLocked: boolean) => void } | null>(null);
+export function GeoOverlay({ map, imageUrl, transform, locked, opacity, onTransformChange }: GeoOverlayProps) {
+  const overlayRef = useRef<google.maps.OverlayView & { update?: (nextTransform: OverlayTransform, nextLocked: boolean, nextOpacity: number) => void } | null>(null);
 
   useEffect(() => {
     if (!map || !imageUrl) {
@@ -151,7 +158,7 @@ export function GeoOverlay({ map, imageUrl, transform, locked, onTransformChange
       return;
     }
     overlayRef.current?.setMap(null);
-    overlayRef.current = createRasterOverlay(map, imageUrl, transform, locked, onTransformChange);
+    overlayRef.current = createRasterOverlay(map, imageUrl, transform, locked, opacity, onTransformChange);
     return () => {
       overlayRef.current?.setMap(null);
       overlayRef.current = null;
@@ -159,8 +166,8 @@ export function GeoOverlay({ map, imageUrl, transform, locked, onTransformChange
   }, [map, imageUrl, onTransformChange]);
 
   useEffect(() => {
-    overlayRef.current?.update?.(transform, locked);
-  }, [transform, locked]);
+    overlayRef.current?.update?.(transform, locked, opacity);
+  }, [transform, locked, opacity]);
 
   return null;
 }
