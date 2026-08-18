@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTwoFingerGesture, createHighResolutionExportPlan, getExportPixelDimensions, getPdfPageSizeAtDpi, getStaticMapZoom, latLngToMapPixel, moveOverlay, normalizeRotation } from "./overlayMath";
+import { applyCalibrationSnapshot, applyTwoFingerGesture, createHighResolutionExportPlan, formatCalibrationText, getExportPixelDimensions, getPdfPageSizeAtDpi, getStaticMapZoom, latLngToMapPixel, moveOverlay, normalizeRotation, parseCalibrationText, validateCalibrationSnapshot } from "./overlayMath";
 
 const base = { lat: 15, lng: 43, spanLng: 0.02, rotation: 0 };
 
@@ -60,5 +60,47 @@ describe("overlay precision controls", () => {
     const page = getPdfPageSizeAtDpi({ width: 1700, height: 2818 });
     expect(page.width).toBeCloseTo(408);
     expect(page.height).toBeCloseTo(676.32);
+  });
+
+  it("exports and restores a complete calibration snapshot", () => {
+    const text = formatCalibrationText({
+      transform: { lat: 15.064953, lng: 43.290696, spanLng: 0.110119, rotation: 359.64 },
+      overlayOpacity: 72,
+      mapZoom: 15,
+      roadsVisible: false,
+    });
+    const parsed = parseCalibrationText(text);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.calibration.transform).toEqual({ lat: 15.064953, lng: 43.290696, spanLng: 0.110119, rotation: 359.64 });
+    expect(parsed.calibration.overlayOpacity).toBe(72);
+    expect(parsed.calibration.mapZoom).toBe(15);
+    expect(parsed.calibration.roadsVisible).toBe(false);
+  });
+
+  it("rejects incomplete or unsafe calibration text", () => {
+    expect(parseCalibrationText("lat=15\nlng=43").ok).toBe(false);
+    expect(parseCalibrationText("lat=91\nlng=43\nspanLng=0.1\nrotation=0").ok).toBe(false);
+    expect(parseCalibrationText("lat=15\nlng=43\nspanLng=0.1\nrotation=0\nroadsVisible=perhaps").ok).toBe(false);
+  });
+
+  it("applies a pasted calibration across all map and overlay state values", () => {
+    const parsed = parseCalibrationText("lat=15.064953\nlng=43.290696\nspanLng=0.110119\nrotation=359.64\nopacity=72\nmapZoom=15\nroadsVisible=false");
+    if (!parsed.ok) throw new Error(parsed.message);
+    const applied = applyCalibrationSnapshot({
+      mapSnapshot: { lat: 15.073, lng: 43.279, zoom: 14 },
+      overlayOpacity: 50,
+      roadsVisible: true,
+    }, parsed.calibration);
+    expect(applied).toEqual({
+      transform: { lat: 15.064953, lng: 43.290696, spanLng: 0.110119, rotation: 359.64 },
+      mapSnapshot: { lat: 15.064953, lng: 43.290696, zoom: 15 },
+      overlayOpacity: 72,
+      roadsVisible: false,
+    });
+  });
+
+  it("detects incomplete calibration data before a copy or apply operation", () => {
+    expect(validateCalibrationSnapshot({ transform: { lat: NaN, lng: 43, spanLng: 0.1, rotation: 0 } })).toContain("غير مكتملة");
   });
 });

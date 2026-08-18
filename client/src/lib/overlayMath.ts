@@ -5,6 +5,126 @@ export type OverlayTransform = {
   rotation: number;
 };
 
+export type CalibrationSnapshot = {
+  transform: OverlayTransform;
+  overlayOpacity?: number;
+  mapZoom?: number;
+  roadsVisible?: boolean;
+};
+
+export type CalibrationParseResult =
+  | { ok: true; calibration: CalibrationSnapshot }
+  | { ok: false; message: string };
+
+export type AppliedCalibrationState = {
+  transform: OverlayTransform;
+  mapSnapshot: { lat: number; lng: number; zoom: number };
+  overlayOpacity: number;
+  roadsVisible: boolean;
+};
+
+const CALIBRATION_HEADER = "MAP_OVERLAY_CALIBRATION_V1";
+
+type NumberRead = { value: number | undefined } | { error: string };
+
+function readNumber(fields: Map<string, string>, key: string, required: boolean): NumberRead {
+  const raw = fields.get(key);
+  if (raw === undefined || raw === "") return required ? { error: `القيمة ${key} مطلوبة.` } : { value: undefined };
+  const value = Number(raw.replace(",", "."));
+  return Number.isFinite(value) ? { value } : { error: `القيمة ${key} يجب أن تكون رقماً صحيحاً.` };
+}
+
+export function validateCalibrationSnapshot(calibration: CalibrationSnapshot): string | null {
+  const { transform, overlayOpacity, mapZoom } = calibration;
+  if (![transform.lat, transform.lng, transform.spanLng, transform.rotation].every(Number.isFinite)) return "بيانات المعايرة غير مكتملة أو غير صالحة.";
+  if (transform.lat < -85 || transform.lat > 85 || transform.lng < -180 || transform.lng > 180) return "إحداثيات المعايرة خارج النطاق المسموح.";
+  if (transform.spanLng < 0.00002 || transform.spanLng > 2) return "مقياس المعايرة خارج النطاق المسموح.";
+  if (overlayOpacity !== undefined && (!Number.isFinite(overlayOpacity) || overlayOpacity < 10 || overlayOpacity > 100)) return "شفافية المعايرة غير صالحة.";
+  if (mapZoom !== undefined && (!Number.isFinite(mapZoom) || mapZoom < 1 || mapZoom > 20)) return "مستوى تكبير الخريطة غير صالح.";
+  return null;
+}
+
+export function applyCalibrationSnapshot(
+  current: { mapSnapshot: { lat: number; lng: number; zoom: number }; overlayOpacity: number; roadsVisible: boolean },
+  calibration: CalibrationSnapshot,
+): AppliedCalibrationState {
+  return {
+    transform: calibration.transform,
+    mapSnapshot: {
+      lat: calibration.transform.lat,
+      lng: calibration.transform.lng,
+      zoom: calibration.mapZoom ?? current.mapSnapshot.zoom,
+    },
+    overlayOpacity: calibration.overlayOpacity ?? current.overlayOpacity,
+    roadsVisible: calibration.roadsVisible ?? current.roadsVisible,
+  };
+}
+
+export function formatCalibrationText(calibration: CalibrationSnapshot) {
+  const { transform, overlayOpacity, mapZoom, roadsVisible } = calibration;
+  return [
+    CALIBRATION_HEADER,
+    `lat=${transform.lat.toFixed(6)}`,
+    `lng=${transform.lng.toFixed(6)}`,
+    `spanLng=${transform.spanLng.toFixed(6)}`,
+    `rotation=${normalizeRotation(transform.rotation).toFixed(2)}`,
+    `opacity=${Math.round(overlayOpacity ?? 72)}`,
+    `mapZoom=${Math.round(mapZoom ?? 14)}`,
+    `roadsVisible=${roadsVisible ?? true}`,
+  ].join("\n");
+}
+
+export function parseCalibrationText(text: string): CalibrationParseResult {
+  const lines = text.trim().split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (lines.length === 0) return { ok: false, message: "الصق نص المعايرة أولاً." };
+  if (lines[0] === CALIBRATION_HEADER) lines.shift();
+  const fields = new Map<string, string>();
+  for (const line of lines) {
+    const match = line.match(/^([a-zA-Z]+)\s*[:=]\s*(.+)$/);
+    if (match) fields.set(match[1]!.toLowerCase(), match[2]!.trim());
+  }
+
+  const lat = readNumber(fields, "lat", true);
+  const lng = readNumber(fields, "lng", true);
+  const spanLng = readNumber(fields, "spanlng", true);
+  const rotation = readNumber(fields, "rotation", true);
+  if ("error" in lat) return { ok: false, message: lat.error };
+  if ("error" in lng) return { ok: false, message: lng.error };
+  if ("error" in spanLng) return { ok: false, message: spanLng.error };
+  if ("error" in rotation) return { ok: false, message: rotation.error };
+  if (lat.value! < -85 || lat.value! > 85) return { ok: false, message: "lat يجب أن تقع بين -85 و85." };
+  if (lng.value! < -180 || lng.value! > 180) return { ok: false, message: "lng يجب أن تقع بين -180 و180." };
+  if (spanLng.value! < 0.00002 || spanLng.value! > 2) return { ok: false, message: "spanLng يجب أن تقع بين 0.00002 و2." };
+
+  const opacity = readNumber(fields, "opacity", false);
+  const mapZoom = readNumber(fields, "mapzoom", false);
+  if ("error" in opacity) return { ok: false, message: opacity.error };
+  if ("error" in mapZoom) return { ok: false, message: mapZoom.error };
+  if (opacity.value !== undefined && (opacity.value < 10 || opacity.value > 100)) return { ok: false, message: "opacity يجب أن تقع بين 10 و100." };
+  if (mapZoom.value !== undefined && (mapZoom.value < 1 || mapZoom.value > 20)) return { ok: false, message: "mapZoom يجب أن تقع بين 1 و20." };
+  const roadsText = fields.get("roadsvisible")?.toLowerCase();
+  if (roadsText !== undefined && roadsText !== "true" && roadsText !== "false") return { ok: false, message: "roadsVisible يجب أن تكون true أو false." };
+
+  const calibration: CalibrationSnapshot = {
+    transform: {
+      lat: lat.value!,
+      lng: lng.value!,
+      spanLng: spanLng.value!,
+      rotation: normalizeRotation(rotation.value!),
+    },
+    overlayOpacity: opacity.value === undefined ? undefined : Math.round(opacity.value),
+    mapZoom: mapZoom.value === undefined ? undefined : Math.round(mapZoom.value),
+    roadsVisible: roadsText === undefined ? undefined : roadsText === "true",
+  };
+  const validationError = validateCalibrationSnapshot(calibration);
+  if (validationError) return { ok: false, message: validationError };
+
+  return {
+    ok: true,
+    calibration,
+  };
+}
+
 export type PrecisionAction =
   | "north"
   | "south"

@@ -14,6 +14,8 @@ import {
   ArrowRight,
   ArrowUp,
   Check,
+  Clipboard,
+  ClipboardPaste,
   Crosshair,
   Download,
   Eye,
@@ -37,7 +39,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { createHighResolutionExportPlan, getPdfPageSizeAtDpi, latLngToMapPixel, moveOverlay, type OverlayTransform, type PrecisionAction } from "@/lib/overlayMath";
+import { applyCalibrationSnapshot, createHighResolutionExportPlan, formatCalibrationText, getPdfPageSizeAtDpi, latLngToMapPixel, moveOverlay, parseCalibrationText, validateCalibrationSnapshot, type OverlayTransform, type PrecisionAction } from "@/lib/overlayMath";
+import { Textarea } from "@/components/ui/textarea";
 
 type MapSnapshot = { lat: number; lng: number; zoom: number };
 type ExportBounds = { north: number; south: number; east: number; west: number };
@@ -99,6 +102,7 @@ export default function Home() {
   const [exportBounds, setExportBounds] = useState<ExportBounds | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isRestored, setIsRestored] = useState(false);
+  const [calibrationText, setCalibrationText] = useState("");
   const captureRef = useRef<HTMLDivElement>(null);
   const mapRectangleRef = useRef<google.maps.Rectangle | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -290,6 +294,55 @@ export default function Home() {
     toast.success("حُفظت حالة الإسناد الجغرافي على هذا الجهاز.");
   };
 
+  const currentCalibration = () => formatCalibrationText({
+    transform,
+    overlayOpacity,
+    mapZoom: mapSnapshot.zoom,
+    roadsVisible,
+  });
+
+  const copyCalibration = async () => {
+    if (!overlayImage) {
+      toast.error("ارفع المخطط أولاً لتكوين معايرة قابلة للنسخ.");
+      return;
+    }
+    const validationError = validateCalibrationSnapshot({ transform, overlayOpacity, mapZoom: mapSnapshot.zoom, roadsVisible });
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+    const text = currentCalibration();
+    setCalibrationText(text);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("تم نسخ المعايرة الحالية. يمكنك لصقها لاحقاً في التطبيق.");
+    } catch {
+      toast.error("تعذر النسخ التلقائي. انسخ النص الظاهر في الحقل يدوياً.");
+    }
+  };
+
+  const applyCalibration = () => {
+    if (!overlayImage) {
+      toast.error("ارفع المخطط أولاً ثم الصق معايرته لتطبيقها.");
+      return;
+    }
+    const parsed = parseCalibrationText(calibrationText);
+    if (!parsed.ok) {
+      toast.error(parsed.message);
+      return;
+    }
+    const next = applyCalibrationSnapshot({ mapSnapshot, overlayOpacity, roadsVisible }, parsed.calibration);
+    setTransform(next.transform);
+    setMapSnapshot(next.mapSnapshot);
+    setOverlayOpacity(next.overlayOpacity);
+    setRoadsVisible(next.roadsVisible);
+    if (map) {
+      map.setCenter({ lat: next.mapSnapshot.lat, lng: next.mapSnapshot.lng });
+      map.setZoom(next.mapSnapshot.zoom);
+    }
+    toast.success("تم تطبيق المعايرة على المخطط فوراً.");
+  };
+
   const exportResult = async (format: "png" | "pdf") => {
     if (!map || !exportBounds || !overlayImage) {
       toast.error("فعّل نطاق التصدير وعدّله قبل التحميل.");
@@ -465,6 +518,28 @@ export default function Home() {
             <Button disabled={!overlayImage} className="w-full bg-slate-100 text-slate-950 hover:bg-white" onClick={() => void saveSession()}>
               <Save className="ml-2 h-4 w-4" />حفظ الحالة
             </Button>
+          </div>
+
+          <div className="my-5 h-px bg-white/10" />
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">نسخ ولصق المعايرة</h3><ClipboardPaste className="h-4 w-4 text-teal-300" /></div>
+            <p className="text-xs leading-5 text-slate-400">الصق النص الموحد هنا لتطبيق الموضع والدوران والمقياس والشفافية فوراً.</p>
+            <Textarea
+              value={calibrationText}
+              onChange={event => setCalibrationText(event.target.value)}
+              className="min-h-40 resize-y border-white/10 bg-[#06111a] font-mono text-[11px] leading-5 text-slate-200 placeholder:text-slate-600"
+              placeholder={"MAP_OVERLAY_CALIBRATION_V1\nlat=15.064953\nlng=43.290696\nspanLng=0.110119\nrotation=359.64\nopacity=72\nmapZoom=15\nroadsVisible=false"}
+              aria-label="نص المعايرة"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Button disabled={!overlayImage} className="bg-teal-400 text-[#05251f] hover:bg-teal-300" onClick={applyCalibration}>
+                <ClipboardPaste className="ml-2 h-4 w-4" />تطبيق المعايرة
+              </Button>
+              <Button disabled={!overlayImage} variant="outline" className="border-white/10 bg-white/5 text-slate-100 hover:bg-white/10 hover:text-white" onClick={() => void copyCalibration()}>
+                <Clipboard className="ml-2 h-4 w-4" />نسخ المعايرة
+              </Button>
+            </div>
           </div>
 
           <div className="my-5 h-px bg-white/10" />
