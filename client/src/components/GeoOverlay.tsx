@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { OverlayTransform } from "@/lib/overlayMath";
+import { applyTwoFingerGesture, type OverlayTransform } from "@/lib/overlayMath";
 
 type GeoOverlayProps = {
   map: google.maps.Map | null;
@@ -25,6 +25,9 @@ function createRasterOverlay(
     private transform: OverlayTransform;
     private locked: boolean;
     private opacity: number;
+    private pointers = new Map<number, { x: number; y: number }>();
+    private dragStart?: { transform: OverlayTransform; point: { x: number; y: number } };
+    private gestureStart?: { transform: OverlayTransform; distance: number; angle: number };
 
     constructor() {
       super();
@@ -107,41 +110,87 @@ function createRasterOverlay(
 
     private installDragHandler() {
       if (!this.root) return;
+      const getPairMetrics = () => {
+        const [first, second] = Array.from(this.pointers.values());
+        if (!first || !second) return null;
+        const dx = second.x - first.x;
+        const dy = second.y - first.y;
+        return { distance: Math.hypot(dx, dy), angle: Math.atan2(dy, dx) };
+      };
+
+      const commit = (next: OverlayTransform) => {
+        this.transform = next;
+        onTransformChange(next);
+      };
+
       this.root.addEventListener("pointerdown", event => {
         if (this.locked) return;
         event.preventDefault();
         event.stopPropagation();
-        const startingTransform = { ...this.transform };
-        const startingPoint = { x: event.clientX, y: event.clientY };
+        this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         this.root?.setPointerCapture(event.pointerId);
         if (this.root) this.root.style.cursor = "grabbing";
 
-        const move = (moveEvent: PointerEvent) => {
-          const projection = this.getProjection();
-          if (!projection) return;
-          const startPixel = projection.fromLatLngToDivPixel(
-            new google.maps.LatLng(startingTransform.lat, startingTransform.lng),
-          );
-          if (!startPixel) return;
-          const nextLatLng = projection.fromDivPixelToLatLng(
-            new google.maps.Point(
-              startPixel.x + moveEvent.clientX - startingPoint.x,
-              startPixel.y + moveEvent.clientY - startingPoint.y,
-            ),
-          );
-          if (!nextLatLng) return;
-          onTransformChange({ ...startingTransform, lat: nextLatLng.lat(), lng: nextLatLng.lng() });
-        };
-
-        const end = () => {
-          if (this.root) this.root.style.cursor = "grab";
-          window.removeEventListener("pointermove", move);
-          window.removeEventListener("pointerup", end);
-        };
-
-        window.addEventListener("pointermove", move);
-        window.addEventListener("pointerup", end, { once: true });
+        if (this.pointers.size === 1) {
+          this.dragStart = { transform: { ...this.transform }, point: { x: event.clientX, y: event.clientY } };
+          this.gestureStart = undefined;
+        } else if (this.pointers.size === 2) {
+          const metrics = getPairMetrics();
+          if (metrics) this.gestureStart = { transform: { ...this.transform }, ...metrics };
+          this.dragStart = undefined;
+        }
       });
+
+      this.root.addEventListener("pointermove", event => {
+        if (!this.pointers.has(event.pointerId) || this.locked) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+        if (this.pointers.size >= 2 && this.gestureStart) {
+          const metrics = getPairMetrics();
+          if (!metrics) return;
+          commit(applyTwoFingerGesture(this.gestureStart.transform, {
+            initialDistance: this.gestureStart.distance,
+            currentDistance: metrics.distance,
+            initialAngle: this.gestureStart.angle,
+            currentAngle: metrics.angle,
+          }));
+          return;
+        }
+
+        if (this.pointers.size !== 1 || !this.dragStart) return;
+        const projection = this.getProjection();
+        if (!projection) return;
+        const startPixel = projection.fromLatLngToDivPixel(
+          new google.maps.LatLng(this.dragStart.transform.lat, this.dragStart.transform.lng),
+        );
+        if (!startPixel) return;
+        const nextLatLng = projection.fromDivPixelToLatLng(
+          new google.maps.Point(
+            startPixel.x + event.clientX - this.dragStart.point.x,
+            startPixel.y + event.clientY - this.dragStart.point.y,
+          ),
+        );
+        if (!nextLatLng) return;
+        commit({ ...this.dragStart.transform, lat: nextLatLng.lat(), lng: nextLatLng.lng() });
+      });
+
+      const finishPointer = (event: PointerEvent) => {
+        this.pointers.delete(event.pointerId);
+        if (this.root?.hasPointerCapture(event.pointerId)) this.root.releasePointerCapture(event.pointerId);
+        this.gestureStart = undefined;
+        if (this.pointers.size === 1) {
+          const remaining = Array.from(this.pointers.values())[0];
+          if (remaining) this.dragStart = { transform: { ...this.transform }, point: remaining };
+        } else {
+          this.dragStart = undefined;
+          if (this.root) this.root.style.cursor = "grab";
+        }
+      };
+
+      this.root.addEventListener("pointerup", finishPointer);
+      this.root.addEventListener("pointercancel", finishPointer);
     }
   }
 

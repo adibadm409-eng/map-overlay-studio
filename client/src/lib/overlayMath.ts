@@ -58,6 +58,19 @@ export function moveOverlay(
   return next;
 }
 
+export function applyTwoFingerGesture(
+  transform: OverlayTransform,
+  gesture: { initialDistance: number; currentDistance: number; initialAngle: number; currentAngle: number },
+): OverlayTransform {
+  const scale = gesture.initialDistance > 0 ? gesture.currentDistance / gesture.initialDistance : 1;
+  const rotationDelta = ((gesture.currentAngle - gesture.initialAngle) * 180) / Math.PI;
+  return {
+    ...transform,
+    spanLng: Math.max(0.00002, Math.min(2, transform.spanLng * scale)),
+    rotation: normalizeRotation(transform.rotation + rotationDelta),
+  };
+}
+
 export function getMercatorY(latitude: number) {
   const clipped = Math.max(-85, Math.min(85, latitude));
   const radians = (clipped * Math.PI) / 180;

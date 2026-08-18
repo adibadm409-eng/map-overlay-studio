@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createHighResolutionExportPlan, getExportPixelDimensions, getPdfPageSizeAtDpi, getStaticMapZoom, latLngToMapPixel, moveOverlay, normalizeRotation } from "./overlayMath";
+import { applyTwoFingerGesture, createHighResolutionExportPlan, getExportPixelDimensions, getPdfPageSizeAtDpi, getStaticMapZoom, latLngToMapPixel, moveOverlay, normalizeRotation } from "./overlayMath";
 
 const base = { lat: 15, lng: 43, spanLng: 0.02, rotation: 0 };
 
@@ -13,6 +13,17 @@ describe("overlay precision controls", () => {
     expect(normalizeRotation(-5)).toBe(355);
     expect(moveOverlay(base, "rotateCounterClockwise", 0.1, 2).rotation).toBe(358);
     expect(moveOverlay({ ...base, spanLng: 0.00002 }, "zoomIn", 1, 20).spanLng).toBe(0.00002);
+  });
+
+  it("scales and rotates a plan with a two-finger gesture", () => {
+    const next = applyTwoFingerGesture(base, {
+      initialDistance: 100,
+      currentDistance: 150,
+      initialAngle: 0,
+      currentAngle: Math.PI / 2,
+    });
+    expect(next.spanLng).toBeCloseTo(0.03);
+    expect(next.rotation).toBeCloseTo(90);
   });
 
   it("places the map centre at the centre pixel", () => {

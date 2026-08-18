@@ -194,7 +194,10 @@ export default function Home() {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const image = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
+      const extension = file.name.toLowerCase();
+      const isPdf = file.type === "application/pdf" || extension.endsWith(".pdf");
+      const isSvg = file.type === "image/svg+xml" || extension.endsWith(".svg");
+      const image = isPdf
         ? await convertPdfToPng(file)
         : await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
@@ -206,7 +209,7 @@ export default function Home() {
       setFileName(file.name);
       setOverlayLocked(false);
       setTransform({ ...INITIAL_OVERLAY, lat: mapSnapshot.lat, lng: mapSnapshot.lng });
-      toast.success("تمت إضافة المخطط. اسحبه مباشرة فوق الموقع المطلوب.");
+      toast.success(isSvg ? "تمت إضافة ملف SVG المتجهي. اسحبه مباشرة فوق الموقع المطلوب." : "تمت إضافة المخطط. اسحبه مباشرة فوق الموقع المطلوب.");
     } catch (error) {
       console.error(error);
       toast.error("تعذر استخراج الصفحة الأولى من الملف المرفوع.");
@@ -425,10 +428,10 @@ export default function Home() {
           </div>
 
           <div className="space-y-3">
-            <input ref={inputRef} type="file" accept="application/pdf,image/png,image/jpeg" className="hidden" onChange={handleUpload} />
+            <input ref={inputRef} type="file" accept="application/pdf,image/png,image/jpeg,image/svg+xml,.svg" className="hidden" onChange={handleUpload} />
             <Button className="h-11 w-full justify-between bg-teal-400 text-[#05251f] hover:bg-teal-300" onClick={() => inputRef.current?.click()}>
               <span className="flex items-center gap-2"><FileUp className="h-4 w-4" />رفع مخطط PDF</span>
-              <span className="text-[10px] font-medium">PDF / PNG</span>
+              <span className="text-[10px] font-medium">PDF / SVG / PNG</span>
             </Button>
             <p className="min-h-5 truncate text-xs text-slate-400">{fileName || "لم يتم اختيار ملف بعد"}</p>
 
