@@ -23,6 +23,7 @@ import {
   FileUp,
   Focus,
   Layers3,
+  Loader2,
   Lock,
   LockKeyhole,
   Map as MapIcon,
@@ -104,6 +105,7 @@ export default function Home() {
   const [exportBounds, setExportBounds] = useState<ExportBounds | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isRestored, setIsRestored] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [calibrationText, setCalibrationText] = useState("");
   const captureRef = useRef<HTMLDivElement>(null);
   const mapRectangleRef = useRef<google.maps.Rectangle | null>(null);
@@ -292,8 +294,16 @@ export default function Home() {
       toast.error("ارفع مخططاً قبل حفظ حالة الإسناد.");
       return;
     }
-    await set(SESSION_STORAGE_KEY, { fileName, overlayImage, transform, mapSnapshot, overlayOpacity, roadsVisible });
-    toast.success("حُفظت حالة الإسناد الجغرافي على هذا الجهاز.");
+    setIsSaving(true);
+    try {
+      await set(SESSION_STORAGE_KEY, { fileName, overlayImage, transform, mapSnapshot, overlayOpacity, roadsVisible });
+      toast.success("اكتمل حفظ حالة الإسناد الجغرافي على هذا الجهاز.");
+    } catch (error) {
+      console.error(error);
+      toast.error("تعذر حفظ الحالة. حاول مرة أخرى.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const currentCalibration = () => formatCalibrationText({
@@ -517,9 +527,11 @@ export default function Home() {
           <div className="space-y-3">
             <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">حفظ الإسناد</h3><Save className="h-4 w-4 text-teal-300" /></div>
             <p className="text-xs leading-5 text-slate-400">يحفظ الموضع والدوران والمقياس ومركز الخريطة وملف الطبقة على هذا الجهاز.</p>
-            <Button disabled={!overlayImage} className="w-full bg-slate-100 text-slate-950 hover:bg-white" onClick={() => void saveSession()}>
-              <Save className="ml-2 h-4 w-4" />حفظ الحالة
+            <Button disabled={!overlayImage || isSaving} className="w-full bg-slate-100 text-slate-950 hover:bg-white" onClick={() => void saveSession()} aria-busy={isSaving}>
+              {isSaving ? <Loader2 className="ml-2 h-4 w-4 animate-spin" /> : <Save className="ml-2 h-4 w-4" />}
+              {isSaving ? "جار حفظ الحالة..." : "حفظ الحالة"}
             </Button>
+            {isSaving && <p role="status" className="rounded-md border border-teal-300/20 bg-teal-300/10 px-3 py-2 text-center text-xs text-teal-100">جار حفظ الإسناد محلياً، يرجى الانتظار.</p>}
           </div>
 
           <div className="my-5 h-px bg-white/10" />
